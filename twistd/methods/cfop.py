@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Final
 
-from twistd.methods.pieces import locate
+from twistd.cube import SOLVED, apply_moves
+from twistd.methods.last_layer import Case, apply_case, recognize_oll, recognize_pll
+from twistd.methods.pieces import NEXT, home, locate
 from twistd.methods.search import ida_star, table_for
 
 CROSS: Final = ("DF", "DR", "DB", "DL")
@@ -22,6 +24,7 @@ SLOTS: Final = {
     "BR": ("DBR", "BR"),
     "BL": ("DBL", "BL"),
 }
+F2L_PIECES: Final = (*CROSS, *(piece for pair in SLOTS.values() for piece in pair))
 
 
 @dataclass(frozen=True)
@@ -104,8 +107,6 @@ def solve_pair(
 
 
 def _apply(positions: tuple[int, ...], moves: list[str]) -> tuple[int, ...]:
-    from twistd.methods.pieces import NEXT
-
     for m in moves:
         nxt = NEXT[m]
         positions = tuple(nxt[p] for p in positions)
@@ -190,3 +191,39 @@ def best_f2l(cube: str, cross_moves: tuple[str, ...]) -> list[Step]:
 
     explore(cross_state, start_pairs, (), [], 0)
     return best_steps
+
+
+def _explain(case: Case) -> str:
+    if case.kind == "OLL":
+        if not case.algorithm:
+            return "The top face is already one color: OLL skip."
+        return "Make the whole top face one color."
+    if not case.algorithm:
+        return "Turn the top layer into place." if case.finish else "Already solved: PLL skip."
+    return "Move the top-layer pieces to their final spots."
+
+
+def _last_layer_step(case: Case) -> Step:
+    return Step(case.kind, tuple(case.moves.split()), _explain(case), case=case.label)
+
+
+def solve(cube: str, *, best: bool = False) -> list[Step]:
+    """Full CFOP: cross, four F2L pairs, OLL, PLL. `best` searches all 24 F2L orders.
+
+    Every stage is checked as it's applied, and the final cube must be solved.
+    """
+    cross = solve_cross(cube)
+    f2l = best_f2l(cube, cross.moves) if best else solve_f2l(cube, cross.moves, tuple(SLOTS))
+
+    state = apply_moves(cube, " ".join(cross.moves + sum((s.moves for s in f2l), ())))
+    if not all(locate(state, p) == home(p) for p in F2L_PIECES):
+        raise RuntimeError("F2L stage left the first two layers unsolved")
+
+    oll = recognize_oll(state)
+    state = apply_case(state, oll)
+    pll = recognize_pll(state)
+    state = apply_case(state, pll)
+    if state != SOLVED:
+        raise RuntimeError("CFOP finished without solving the cube")
+
+    return [cross, *f2l, _last_layer_step(oll), _last_layer_step(pll)]

@@ -74,3 +74,15 @@ def test_already_solved_cube_needs_no_moves() -> None:
     cross = cfop.solve_cross(SOLVED)
     assert cross.moves == ()
     assert all(s.moves == () for s in cfop.solve_f2l(SOLVED, (), tuple(cfop.SLOTS)))
+
+
+@pytest.mark.parametrize("best", [False, True], ids=["standard", "best-f2l"])
+def test_full_cfop_solves_the_cube(best: bool) -> None:
+    from twistd.methods.notation import to_face_turns
+
+    for cube in _scrambles(3, seed=4):
+        steps = cfop.solve(cube, best=best)
+        assert [s.stage for s in steps] == ["Cross", "F2L 1", "F2L 2", "F2L 3", "F2L 4", "OLL", "PLL"]
+        alg = " ".join(" ".join(s.moves) for s in steps)
+        assert apply_moves(cube, " ".join(to_face_turns(alg)[0])) == SOLVED
+        assert steps[5].case and steps[5].case.startswith("OLL")
