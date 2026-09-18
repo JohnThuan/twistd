@@ -102,11 +102,11 @@ def to_face_turns(algorithm: str) -> tuple[list[str], Frame]:
                 for move in base_moves.split():
                     out.append(_face_turn(frame[move[0]], _turns(move[1:])))
                 frame = rotate_frame(frame, rotation[0], _turns(rotation[1:]))
-    return _simplify(out), frame
+    return simplify(out), frame
 
 
-def _simplify(moves: list[str]) -> list[str]:
-    """Merge consecutive turns of the same face (R R -> R2, R R' -> nothing)."""
+def simplify(moves: list[str]) -> list[str]:
+    """Merge consecutive turns of the same face or rotation (U U U -> U', y y -> y2)."""
     stack: list[tuple[str, int]] = []
     for move in moves:
         face, turns = move[0], _turns(move[1:])

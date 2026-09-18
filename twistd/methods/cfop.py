@@ -34,6 +34,8 @@ class Step:
     moves: tuple[str, ...]
     explanation: str
     case: str | None = None
+    # The memorized algorithm this step uses, if any (the rest of `moves` is setup).
+    algorithm: str | None = None
 
     @property
     def move_count(self) -> int:
@@ -205,7 +207,9 @@ def _explain(case: Case) -> str:
 
 
 def _last_layer_step(case: Case) -> Step:
-    return Step(case.kind, tuple(case.moves.split()), _explain(case), case=case.label)
+    return Step(
+        case.kind, tuple(case.moves.split()), _explain(case), case=case.label, algorithm=case.algorithm or None
+    )
 
 
 def solve(cube: str, *, best: bool = False) -> list[Step]:

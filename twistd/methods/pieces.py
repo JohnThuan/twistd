@@ -113,3 +113,8 @@ def view_after_y(cube: str, turns: int) -> str:
         cube = "".join(cube[src] for src in _Y)
     rename = {cube[9 * i + 4]: _FACES[i] for i in range(6)}
     return "".join(rename[c] for c in cube)
+
+
+def slot_of(position: int) -> tuple[int, ...]:
+    """All sticker slots of the piece position containing `position` (identifies the slot)."""
+    return _SLOT[position]
