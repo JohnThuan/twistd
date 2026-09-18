@@ -3,12 +3,13 @@ from __future__ import annotations
 import kociemba
 
 from twistd.cube import SOLVED, UnsolvableCubeError
+from twistd.solvers.base import Solver
 
 # Example state from the kociemba README; used to load pruning tables at startup.
 _WARMUP_CUBE = "DRLUUBFBRBLURRLRUBLRDDFDLFUFUFFDBRDUBRUFLLFDDBFLUBLRBD"
 
 
-class KociembaSolver:
+class KociembaSolver(Solver):
     name = "kociemba"
 
     def warmup(self) -> None:
