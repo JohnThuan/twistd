@@ -1,3 +1,5 @@
 fastapi>=0.115,<1
-uvicorn[standard]>=0.30,<1
+uvicorn>=0.30,<1
+uvloop>=0.19; sys_platform != "win32"
+httptools>=0.6
 kociemba==1.2.1
