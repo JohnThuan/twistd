@@ -7,90 +7,107 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from twistd import __version__
-from twistd.batching import Batcher, QueueFullError
 from twistd.config import Settings
 from twistd.cube import InvalidCubeError, normalize, validate_facelets
 from twistd.metrics import Metrics
+from twistd.middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 from twistd.schemas import ErrorResponse, HealthResponse, SolveRequest, SolveResponse
-from twistd.solvers import Solver, get_solver
+from twistd.service import (
+    OverloadedError,
+    SolverFaultError,
+    SolveService,
+    SolveTimeoutError,
+)
+from twistd.solvers import get_solver
 
 logger = logging.getLogger("twistd")
 
 _ERRORS: dict[int | str, dict[str, Any]] = {
-    400: {"model": ErrorResponse},
-    503: {"model": ErrorResponse},
+    code: {"model": ErrorResponse} for code in (400, 413, 500, 503, 504)
 }
 
 
+def _error(status: int, detail: str, headers: dict[str, str] | None = None) -> JSONResponse:
+    return JSONResponse(status_code=status, content={"detail": detail}, headers=headers)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
-    """Build the app. Settings default to the environment, read at startup."""
+    """Build the app. Settings default to the environment."""
+    cfg = settings or Settings.from_env()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        cfg = settings or Settings.from_env()
         logging.basicConfig(
             level=cfg.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s"
         )
         solver = get_solver(cfg.solver)
         started = time.perf_counter()
         solver.warmup()
+        service = SolveService(solver, cfg)
+        await service.start()
         logger.info(
-            "solver ready solver=%s warmup_ms=%.1f batching=%s",
+            "solver ready solver=%s warmup_ms=%.1f threads=%d batching=%s cache=%d",
             solver.name,
             (time.perf_counter() - started) * 1000,
-            cfg.batching,
+            service.threads,
+            service.batching,
+            cfg.cache_size,
         )
-
-        batcher: Batcher | None = None
-        if cfg.batching:
-            batcher = Batcher(
-                solver,
-                max_batch_size=cfg.batch_max_size,
-                max_wait_ms=cfg.batch_max_wait_ms,
-                max_queue=cfg.batch_queue_max,
-                workers=cfg.batch_workers,
-            )
-            await batcher.start()
-
-        app.state.solver = solver
-        app.state.batcher = batcher
+        app.state.service = service
         app.state.metrics = Metrics()
         try:
             yield
         finally:
-            if batcher is not None:
-                await batcher.stop()
+            await service.stop()
 
-    app = FastAPI(title="twistd", version=__version__, lifespan=lifespan)
+    docs = {} if cfg.docs_enabled else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    app = FastAPI(title="twistd", version=__version__, lifespan=lifespan, **docs)
+    # Order matters: the size limit runs first, and headers wrap every response.
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=cfg.max_body_bytes)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     @app.exception_handler(InvalidCubeError)
     async def invalid_cube_handler(request: Request, exc: InvalidCubeError) -> JSONResponse:
         request.app.state.metrics.rejected_invalid += 1
-        return JSONResponse(status_code=400, content={"detail": str(exc)})
-
-    @app.exception_handler(QueueFullError)
-    async def overload_handler(request: Request, exc: QueueFullError) -> JSONResponse:
-        request.app.state.metrics.rejected_overload += 1
-        return JSONResponse(
-            status_code=503, content={"detail": str(exc)}, headers={"Retry-After": "1"}
-        )
+        return _error(400, str(exc))
 
     @app.exception_handler(RequestValidationError)
     async def request_validation_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        # Report malformed bodies as 400 (not FastAPI's default 422), consistent with bad cubes.
+        # Report malformed bodies as 400 (not FastAPI's default 422), consistent with bad
+        # cubes. Only field locations and messages are echoed back, never the input.
         request.app.state.metrics.rejected_invalid += 1
         messages = [
             f"{'.'.join(str(p) for p in err['loc'] if p != 'body') or 'body'}: {err['msg']}"
             for err in exc.errors()
         ]
-        return JSONResponse(status_code=400, content={"detail": "; ".join(messages)})
+        return _error(400, "; ".join(messages))
+
+    @app.exception_handler(OverloadedError)
+    async def overload_handler(request: Request, exc: OverloadedError) -> JSONResponse:
+        request.app.state.metrics.rejected_overload += 1
+        return _error(503, str(exc), headers={"Retry-After": "1"})
+
+    @app.exception_handler(SolveTimeoutError)
+    async def timeout_handler(request: Request, exc: SolveTimeoutError) -> JSONResponse:
+        request.app.state.metrics.timeouts += 1
+        return _error(504, str(exc))
+
+    @app.exception_handler(SolverFaultError)
+    async def fault_handler(request: Request, exc: SolverFaultError) -> JSONResponse:
+        request.app.state.metrics.solver_faults += 1
+        return _error(500, "internal solver error")
+
+    @app.exception_handler(Exception)
+    async def unhandled_handler(_: Request, exc: Exception) -> JSONResponse:
+        # Log the details server-side; never leak tracebacks to clients.
+        logger.exception("unhandled error")
+        return _error(500, "internal server error")
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -98,10 +115,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/metrics")
     def metrics(request: Request) -> dict[str, object]:
-        batcher: Batcher | None = request.app.state.batcher
+        service: SolveService = request.app.state.service
         return request.app.state.metrics.snapshot(
-            batching=batcher is not None,
-            queue_depth=batcher.queue_depth if batcher else 0,
+            batching=service.batching,
+            queue_depth=service.pending,
+            extra={
+                "solver": {"name": service.solver.name, "threads": service.threads},
+                "cache": {
+                    "size": len(service.cache),
+                    "capacity": service.cache.capacity,
+                    "hits": service.cache_hits,
+                },
+            },
         )
 
     @app.post("/solve", response_model=SolveResponse, responses=_ERRORS)
@@ -110,38 +135,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         cube = normalize(body.cube)
         validate_facelets(cube)
 
-        solver: Solver = request.app.state.solver
-        batcher: Batcher | None = request.app.state.batcher
-        if batcher is not None:
-            result = await batcher.submit(cube)
-            solution, solve_ms = result.solution, result.solve_ms
-            queue_ms, batch_size = result.queue_ms, result.batch_size
-        else:
-            # The solver is CPU-bound; run it in the threadpool so the event loop stays free.
-            started = time.perf_counter()
-            solution = await run_in_threadpool(solver.solve, cube)
-            solve_ms = (time.perf_counter() - started) * 1000
-            queue_ms, batch_size = 0.0, 1
+        service: SolveService = request.app.state.service
+        result = await service.solve(cube)
 
         total_ms = (time.perf_counter() - received) * 1000
-        move_count = len(solution.split())
+        move_count = len(result.solution.split())
         request.app.state.metrics.record_solve(
-            total_ms=total_ms, solve_ms=solve_ms, queue_ms=queue_ms, batch_size=batch_size
+            total_ms=total_ms,
+            solve_ms=result.solve_ms,
+            queue_ms=result.queue_ms,
+            batch_size=result.batch_size,
         )
         logger.info(
-            "solve solver=%s moves=%d solve_ms=%.3f queue_ms=%.3f batch=%d total_ms=%.3f",
-            solver.name,
+            "solve solver=%s moves=%d solve_ms=%.3f queue_ms=%.3f batch=%d cached=%s total_ms=%.3f",
+            service.solver.name,
             move_count,
-            solve_ms,
-            queue_ms,
-            batch_size,
+            result.solve_ms,
+            result.queue_ms,
+            result.batch_size,
+            result.cached,
             total_ms,
         )
         return SolveResponse(
-            solution=solution,
+            solution=result.solution,
             move_count=move_count,
-            solver=solver.name,
-            solve_ms=round(solve_ms, 3),
+            solver=service.solver.name,
+            solve_ms=round(result.solve_ms, 3),
         )
 
     return app

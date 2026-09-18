@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 EXAMPLE_CUBE = "DRLUUBFBRBLURRLRUBLRDDFDLFUFUFFDBRDUBRUFLLFDDBFLUBLRBD"
 
 
 class SolveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     cube: str = Field(
         description="54-character facelet string in kociemba order (U R F D L B).",
         examples=[EXAMPLE_CUBE],
+        # 54 facelets plus slack for surrounding whitespace, which is stripped.
+        max_length=128,
     )
 
 
