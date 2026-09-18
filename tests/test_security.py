@@ -64,7 +64,7 @@ def test_errors_do_not_echo_input(client: TestClient) -> None:
 
 
 def test_docs_can_be_disabled() -> None:
-    app = create_app(Settings(docs_enabled=False, solver_threads=1))
+    app = create_app(Settings(docs_enabled=False, solver_threads=1, method_workers=0))
     with TestClient(app) as c:
         assert c.get("/docs").status_code == 404
         assert c.get("/openapi.json").status_code == 404

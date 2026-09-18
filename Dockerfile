@@ -24,6 +24,10 @@ RUN --mount=type=bind,from=builder,source=/wheels,target=/wheels \
     pip install --no-index --find-links /wheels -r requirements.txt -c constraints.txt
 RUN useradd --create-home --uid 10001 app
 COPY twistd ./twistd
+# Build the teaching methods' lookup tables once, at image build time (~25 s), so
+# containers start in ~0.1 s. Owned by root: read-only to the app at runtime.
+ENV TWISTD_TABLE_DIR=/app/tables
+RUN python -c "from twistd.methods.registry import warmup; warmup()"
 
 # --- test: `docker build --target test -t twistd-test . && docker run --rm twistd-test` ---
 FROM base AS test

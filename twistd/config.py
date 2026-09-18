@@ -16,15 +16,17 @@ def available_cpus() -> int:
     e.g. 1 vCPU (ECS Fargate, `docker run --cpus`), sizing a thread pool from it
     would oversubscribe the CPU and hurt tail latency.
     """
-    try:
-        cpus = len(os.sched_getaffinity(0))
-    except AttributeError:  # not available on macOS/Windows
-        cpus = os.cpu_count() or 1
+    affinity = getattr(os, "sched_getaffinity", None)  # Linux only
+    cpus = len(affinity(0)) if affinity else (os.cpu_count() or 1)
 
     quota = _cgroup_cpu_quota()
     if quota is not None:
         cpus = min(cpus, max(1, math.ceil(quota)))
     return max(1, cpus)
+
+
+def default_method_workers() -> int:
+    return min(available_cpus(), 4)
 
 
 def _cgroup_cpu_quota() -> float | None:
@@ -74,6 +76,9 @@ class Settings:
     log_level: str = "INFO"
     # Threads that run the (GIL-releasing, CPU-bound) solver. Defaults to usable CPUs.
     solver_threads: int = field(default_factory=available_cpus)
+    # Processes for the pure-Python teaching methods (0 = run them on the thread pool).
+    # Each holds ~100 MB of lookup tables, so the default is capped rather than one per CPU.
+    method_workers: int = field(default_factory=lambda: default_method_workers())
     # "auto" batches only for solvers that can vectorize a batch (e.g. a neural net).
     batching: BatchingMode = "auto"
     batch_max_size: int = 32
@@ -100,6 +105,7 @@ class Settings:
             solver=_env_str("SOLVER", cls.solver).lower(),
             log_level=_env_str("LOG_LEVEL", cls.log_level).upper(),
             solver_threads=_env_int("SOLVER_THREADS", available_cpus(), minimum=1),
+            method_workers=_env_int("METHOD_WORKERS", default_method_workers()),
             batching=batching,  # type: ignore[arg-type]
             batch_max_size=_env_int("BATCH_MAX_SIZE", cls.batch_max_size, minimum=1),
             batch_max_wait_ms=_env_float("BATCH_MAX_WAIT_MS", cls.batch_max_wait_ms),

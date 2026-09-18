@@ -39,7 +39,7 @@ class FakeSolver(Solver):
 
 
 def _settings(**overrides: object) -> Settings:
-    base = {"solver_threads": 2, "batching": "off", "solve_timeout_s": 5.0}
+    base = {"solver_threads": 2, "batching": "off", "solve_timeout_s": 5.0, "method_workers": 0}
     return Settings(**{**base, **overrides})  # type: ignore[arg-type]
 
 
@@ -167,3 +167,34 @@ def test_lru_cache_evicts_least_recently_used() -> None:
     assert cache.get("b") is None
     assert cache.get("a") == "1" and cache.get("c") == "3"
     assert len(cache) == 2
+
+
+def test_broken_worker_pool_is_replaced() -> None:
+    from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures.process import BrokenProcessPool
+
+    class ExplodingPool(ProcessPoolExecutor):
+        def submit(self, *args, **kwargs):  # type: ignore[no-untyped-def,override]
+            raise BrokenProcessPool("worker died")
+
+    async def run(service: SolveService):  # type: ignore[no-untyped-def]
+        service._method_pool = ExplodingPool(max_workers=1)
+        restarted = []
+
+        async def fake_restart() -> None:
+            restarted.append(True)
+            service._method_pool = service._executor
+
+        service._start_method_pool = fake_restart  # type: ignore[method-assign]
+        with pytest.raises(OverloadedError):
+            await service.solve(SCRAMBLED, "cfop")
+        return restarted, service._method_pool is service._executor
+
+    restarted, replaced = asyncio.run(_with_service(FakeSolver(), _settings(), run))
+    assert restarted == [True] and replaced
+
+
+def test_default_worker_count_is_capped() -> None:
+    from twistd.config import default_method_workers
+
+    assert 1 <= default_method_workers() <= 4

@@ -11,6 +11,7 @@ from twistd.main import create_app
 def client(request: pytest.FixtureRequest) -> Iterator[TestClient]:
     # Every API test runs against both serving paths. The context manager runs the
     # lifespan, so the solver (and batcher) are set up exactly as in production.
-    app = create_app(Settings(batching=request.param))
+    # Two real worker processes, so the teaching methods go through the process pool.
+    app = create_app(Settings(batching=request.param, method_workers=2))
     with TestClient(app) as c:
         yield c
