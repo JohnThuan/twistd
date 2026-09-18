@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from twistd.solvers.base import Solver
+from twistd.solvers.base import SolveOutcome, Solver
 from twistd.solvers.kociemba_solver import KociembaSolver
 
 _REGISTRY: dict[str, Callable[[], Solver]] = {
@@ -18,4 +18,4 @@ def get_solver(name: str) -> Solver:
     return factory()
 
 
-__all__ = ["Solver", "get_solver"]
+__all__ = ["SolveOutcome", "Solver", "get_solver"]

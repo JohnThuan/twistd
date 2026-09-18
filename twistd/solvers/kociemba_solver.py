@@ -3,12 +3,13 @@ from __future__ import annotations
 import kociemba
 
 from twistd.cube import SOLVED, UnsolvableCubeError
+from twistd.solvers.base import Solver
 
 # Example state from the kociemba README; used to load pruning tables at startup.
 _WARMUP_CUBE = "DRLUUBFBRBLURRLRUBLRDDFDLFUFUFFDBRDUBRUFLLFDDBFLUBLRBD"
 
 
-class KociembaSolver:
+class KociembaSolver(Solver):
     name = "kociemba"
 
     def warmup(self) -> None:
@@ -19,7 +20,7 @@ class KociembaSolver:
         if cube == SOLVED:
             return ""
         try:
-            return kociemba.solve(cube).strip()
+            return str(kociemba.solve(cube)).strip()
         except ValueError as exc:
             raise UnsolvableCubeError(
                 "cube state is not solvable (twisted corner, flipped edge, or parity error)"
