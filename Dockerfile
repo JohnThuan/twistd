@@ -29,7 +29,7 @@ RUN --mount=type=bind,from=builder,source=/wheels,target=/wheels \
 COPY pyproject.toml ./
 COPY tests ./tests
 USER app
-CMD ["pytest", "-q"]
+CMD ["pytest", "-q", "-p", "no:cacheprovider"]
 
 # --- runtime (default target) ---
 FROM base AS runtime
