@@ -87,3 +87,11 @@ twistd/
   solvers/         pluggable solver backends
 tests/             unit and API tests
 ```
+
+## License
+
+twistd is released under the [MIT License](LICENSE).
+
+It depends on [kociemba](https://github.com/muodov/kociemba), which is licensed under **GPLv2**. Running twistd as a network service is unaffected, but a distributed Docker image bundles kociemba, and that bundle is subject to GPLv2's terms. All other runtime dependencies use permissive licenses (MIT, BSD, Apache-2.0, MPL-2.0).
+
+Rubik's Cube® is a registered trademark of its owner. twistd is an independent project and is not affiliated with or endorsed by the trademark owner; the name is used only to describe what the software does.
