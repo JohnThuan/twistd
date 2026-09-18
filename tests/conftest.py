@@ -3,7 +3,7 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from rubiserve.main import app
+from twistd.main import app
 
 
 @pytest.fixture(scope="session")

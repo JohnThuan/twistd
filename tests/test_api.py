@@ -3,7 +3,7 @@ import random
 import pytest
 from fastapi.testclient import TestClient
 
-from rubiserve.cube import SOLVED, apply_moves, random_scramble
+from twistd.cube import SOLVED, apply_moves, random_scramble
 
 README_CUBE = "DRLUUBFBRBLURRLRUBLRDDFDLFUFUFFDBRDUBRUFLLFDDBFLUBLRBD"
 

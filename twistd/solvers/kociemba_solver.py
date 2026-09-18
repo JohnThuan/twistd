@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import kociemba
 
-from rubiserve.cube import SOLVED, UnsolvableCubeError
+from twistd.cube import SOLVED, UnsolvableCubeError
 
 # Example state from the kociemba README; used to load pruning tables at startup.
 _WARMUP_CUBE = "DRLUUBFBRBLURRLRUBLRDDFDLFUFUFFDBRDUBRUFLLFDDBFLUBLRBD"

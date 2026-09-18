@@ -9,13 +9,13 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from rubiserve import __version__
-from rubiserve.config import Settings
-from rubiserve.cube import InvalidCubeError, normalize, validate_facelets
-from rubiserve.schemas import ErrorResponse, HealthResponse, SolveRequest, SolveResponse
-from rubiserve.solvers import Solver, get_solver
+from twistd import __version__
+from twistd.config import Settings
+from twistd.cube import InvalidCubeError, normalize, validate_facelets
+from twistd.schemas import ErrorResponse, HealthResponse, SolveRequest, SolveResponse
+from twistd.solvers import Solver, get_solver
 
-logger = logging.getLogger("rubiserve")
+logger = logging.getLogger("twistd")
 
 
 @asynccontextmanager
@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="RubiServe", version=__version__, lifespan=lifespan)
+app = FastAPI(title="twistd", version=__version__, lifespan=lifespan)
 
 _BAD_REQUEST = {400: {"model": ErrorResponse}}
 

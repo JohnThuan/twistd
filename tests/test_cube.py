@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from rubiserve.cube import (
+from twistd.cube import (
     MOVES,
     SOLVED,
     InvalidMoveError,
