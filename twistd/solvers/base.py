@@ -26,6 +26,9 @@ class Solver(ABC):
     """
 
     name: str
+    # True if solve_batch does real batched work (e.g. one forward pass for many
+    # cubes). With BATCHING=auto, only vectorized solvers get requests batched.
+    vectorized: bool = False
 
     def warmup(self) -> None:
         """Load tables/models so the first request doesn't pay the cost."""

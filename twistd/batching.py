@@ -2,7 +2,7 @@
 
 Requests are queued; a collector task pulls the first waiting job, then keeps pulling
 until the batch is full or `max_wait_ms` has passed since that first job arrived.
-Each batch runs in a worker thread (the solver is CPU-bound), and up to `workers`
+Each batch runs on an executor thread (the solver is CPU-bound), and up to `workers`
 batches can be in flight at once. A bounded queue gives backpressure: when it is
 full, `submit` fails fast instead of letting latency grow without limit.
 """
@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from concurrent.futures import Executor
 from dataclasses import dataclass, field
 
 from twistd.solvers import Solver
@@ -47,12 +48,14 @@ class Batcher:
         max_wait_ms: float = 2.0,
         max_queue: int = 1024,
         workers: int = 4,
+        executor: Executor | None = None,
     ) -> None:
         if max_batch_size < 1 or workers < 1 or max_queue < 1:
             raise ValueError("max_batch_size, workers and max_queue must be >= 1")
         self.solver = solver
         self.max_batch_size = max_batch_size
         self.max_wait_s = max_wait_ms / 1000
+        self._executor = executor  # None -> the loop's default executor
         self._queue: asyncio.Queue[_Job] = asyncio.Queue(maxsize=max_queue)
         self._slots = asyncio.Semaphore(workers)
         self._collector: asyncio.Task[None] | None = None
@@ -109,8 +112,8 @@ class Batcher:
         try:
             dispatched_at = time.perf_counter()
             try:
-                outcomes = await asyncio.to_thread(
-                    self.solver.solve_batch, [job.cube for job in batch]
+                outcomes = await asyncio.get_running_loop().run_in_executor(
+                    self._executor, self.solver.solve_batch, [job.cube for job in batch]
                 )
             except Exception as exc:  # a solver bug must not hang every waiting request
                 logger.exception("batch of %d failed", len(batch))

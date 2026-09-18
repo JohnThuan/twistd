@@ -46,6 +46,8 @@ class Metrics:
         self.solved = 0
         self.rejected_invalid = 0
         self.rejected_overload = 0
+        self.timeouts = 0
+        self.solver_faults = 0
 
     def record_solve(
         self, *, total_ms: float, solve_ms: float, queue_ms: float = 0.0, batch_size: int = 1
@@ -53,9 +55,16 @@ class Metrics:
         self.solved += 1
         self._samples.append(_Sample(time.monotonic(), total_ms, solve_ms, queue_ms, batch_size))
 
-    def snapshot(self, *, batching: bool, queue_depth: int = 0) -> dict[str, object]:
+    def snapshot(
+        self,
+        *,
+        batching: bool,
+        queue_depth: int = 0,
+        extra: dict[str, object] | None = None,
+    ) -> dict[str, object]:
         now = time.monotonic()
         samples = list(self._samples)
+        batched = [s.batch_size for s in samples if s.batch_size > 0]  # 0 = cache hit
         recent = [s for s in samples if now - s.at <= self._rate_window_s]
         span = min(self._rate_window_s, now - self._started) or 1.0
         return {
@@ -64,6 +73,8 @@ class Metrics:
                 "solved": self.solved,
                 "rejected_invalid": self.rejected_invalid,
                 "rejected_overload": self.rejected_overload,
+                "timeouts": self.timeouts,
+                "solver_faults": self.solver_faults,
             },
             "throughput_rps": round(len(recent) / span, 2),
             "window_size": len(samples),
@@ -74,11 +85,8 @@ class Metrics:
             },
             "batching": {
                 "enabled": batching,
-                "avg_batch_size": round(
-                    sum(s.batch_size for s in samples) / len(samples), 2
-                )
-                if samples
-                else 0.0,
+                "avg_batch_size": round(sum(batched) / len(batched), 2) if batched else 0.0,
                 "queue_depth": queue_depth,
             },
+            **(extra or {}),
         }

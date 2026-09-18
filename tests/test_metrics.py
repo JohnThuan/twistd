@@ -20,7 +20,13 @@ def test_snapshot_summarizes_samples() -> None:
     m.rejected_invalid += 2
 
     snap = m.snapshot(batching=True, queue_depth=3)
-    assert snap["requests"] == {"solved": 10, "rejected_invalid": 2, "rejected_overload": 0}
+    assert snap["requests"] == {
+        "solved": 10,
+        "rejected_invalid": 2,
+        "rejected_overload": 0,
+        "timeouts": 0,
+        "solver_faults": 0,
+    }
     assert snap["latency_ms"]["total"]["p50"] == 50
     assert snap["latency_ms"]["solve"]["max"] == 10
     assert snap["batching"] == {"enabled": True, "avg_batch_size": 4.0, "queue_depth": 3}
