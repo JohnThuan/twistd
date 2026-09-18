@@ -11,6 +11,7 @@ edges, yellow corner positions, yellow corner twists.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Final
 
 from twistd.cube import SOLVED, apply_moves
@@ -97,7 +98,8 @@ def _cross(s: _Session) -> None:
         pieces = (*done, edge)
         table = table_for(pieces)
         moves = ida_star(tuple(locate(s.cube, p) for p in pieces), table.distance, max_depth=8)
-        assert moves is not None
+        if moves is None:  # every cross edge is solvable within 8 moves
+            raise RuntimeError(f"no solution for cross edge {edge}")
         s.do(" ".join(moves))
         done = pieces
         s.step("Cross", f"Bring the {edge} edge down so both its colors match their centers.", edge)
@@ -155,7 +157,12 @@ def _middle_edges(s: _Session) -> None:
             # Every missing edge is stuck in a wrong slot or flipped: pop one out.
             s.turn(_rotation_to_front_right(todo[0]))
             s.do(RIGHT_INSERT)
-            s.step("Middle layer", "Pop the stuck edge out to the top layer.", "stuck edge", RIGHT_INSERT)
+            s.step(
+                "Middle layer",
+                "Pop the stuck edge out to the top layer.",
+                "stuck edge",
+                RIGHT_INSERT,
+            )
             continue
         s.turn(_rotation_to_front_right(waiting[0]))  # now the edge belongs at FR
         # Turn the top so the edge's side color lines up with its center.
@@ -168,7 +175,8 @@ def _middle_edges(s: _Session) -> None:
                 used = RIGHT_INSERT_FROM_SIDE
                 break
             s.turn("U")
-        assert used is not None
+        if used is None:  # four U turns always bring a top-layer edge into one of the two spots
+            raise RuntimeError("could not line up the middle-layer edge")
         s.do(used)
         s.step("Middle layer", "Line the edge up with its center, then insert it.", "edge", used)
 
@@ -203,7 +211,7 @@ def _matched_edges(cube: str) -> int:
     return sum(cube[i] == cube[i + 3] for i in (10, 19, 37, 46))  # side sticker vs its center
 
 
-def _best_auf(cube: str, score) -> str:  # type: ignore[no-untyped-def]
+def _best_auf(cube: str, score: Callable[[str], int]) -> str:
     return max(("", "U", "U2", "U'"), key=lambda u: score(apply_moves(cube, u) if u else cube))
 
 
@@ -222,7 +230,9 @@ def _yellow_edges(s: _Session) -> None:
                 break
         s.do(SUNE)
         s.turn("U")
-        s.step("Yellow edges", f"Match the yellow edges to their centers with {SUNE}.", "edges", SUNE)
+        s.step(
+            "Yellow edges", f"Match the yellow edges to their centers with {SUNE}.", "edges", SUNE
+        )
     if s._moves or s._setup:
         s.step("Yellow edges", "Turn the top so every yellow edge matches its center.", "align")
 
@@ -243,7 +253,10 @@ def _place_corners(s: _Session) -> None:
                 break
         s.do(CORNER_CYCLE)
         s.step(
-            "Place yellow corners", f"Cycle the corners into place with {CORNER_CYCLE}.", "position", CORNER_CYCLE
+            "Place yellow corners",
+            f"Cycle the corners into place with {CORNER_CYCLE}.",
+            "position",
+            CORNER_CYCLE,
         )
 
 

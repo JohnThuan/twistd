@@ -59,7 +59,8 @@ def solve_cross(cube: str) -> Step:
     table = table_for(CROSS)
     start = tuple(locate(cube, p) for p in CROSS)
     moves = ida_star(start, table.distance, max_depth=8)
-    assert moves is not None  # every cross is solvable within 8
+    if moves is None:  # every cross is solvable within 8 moves
+        raise RuntimeError("no cross solution within 8 moves")
     return Step("Cross", tuple(moves), "Solve the four D-layer edges so they match their centers.")
 
 
@@ -120,7 +121,8 @@ def solve_f2l(cube: str, cross_moves: tuple[str, ...], order: tuple[str, ...]) -
     """Solve the four pairs in the given slot order, each optimally given the ones before."""
     cross_state = _apply(tuple(locate(cube, p) for p in CROSS), list(cross_moves))
     pair_state = {
-        slot: _apply(tuple(locate(cube, p) for p in SLOTS[slot]), list(cross_moves)) for slot in order
+        slot: _apply(tuple(locate(cube, p) for p in SLOTS[slot]), list(cross_moves))
+        for slot in order
     }
 
     steps: list[Step] = []
@@ -156,7 +158,9 @@ def best_f2l(cube: str, cross_moves: tuple[str, ...]) -> list[Step]:
     optimally given its predecessors: this is the best pair-by-pair F2L.
     """
     cross_state = _apply(tuple(locate(cube, p) for p in CROSS), list(cross_moves))
-    start_pairs = {s: _apply(tuple(locate(cube, p) for p in SLOTS[s]), list(cross_moves)) for s in SLOTS}
+    start_pairs = {
+        s: _apply(tuple(locate(cube, p) for p in SLOTS[s]), list(cross_moves)) for s in SLOTS
+    }
 
     # Seed the bound with the default order so pruning starts immediately.
     best_steps = solve_f2l(cube, cross_moves, tuple(SLOTS))
@@ -208,7 +212,11 @@ def _explain(case: Case) -> str:
 
 def _last_layer_step(case: Case) -> Step:
     return Step(
-        case.kind, tuple(case.moves.split()), _explain(case), case=case.label, algorithm=case.algorithm or None
+        case.kind,
+        tuple(case.moves.split()),
+        _explain(case),
+        case=case.label,
+        algorithm=case.algorithm or None,
     )
 
 
@@ -265,7 +273,9 @@ def solve_f2l_human(
 ) -> tuple[list[Step], int]:
     """F2L the way people do it. Returns the steps and the final y orientation."""
     cross_state = _apply(tuple(locate(cube, p) for p in CROSS), list(cross_moves))
-    pair_state = {s: _apply(tuple(locate(cube, p) for p in SLOTS[s]), list(cross_moves)) for s in SLOTS}
+    pair_state = {
+        s: _apply(tuple(locate(cube, p) for p in SLOTS[s]), list(cross_moves)) for s in SLOTS
+    }
 
     steps: list[Step] = []
     solved: tuple[str, ...] = ()

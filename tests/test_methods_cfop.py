@@ -82,7 +82,15 @@ def test_full_cfop_solves_the_cube(best: bool) -> None:
 
     for cube in _scrambles(3, seed=4):
         steps = cfop.solve(cube, best=best)
-        assert [s.stage for s in steps] == ["Cross", "F2L 1", "F2L 2", "F2L 3", "F2L 4", "OLL", "PLL"]
+        assert [s.stage for s in steps] == [
+            "Cross",
+            "F2L 1",
+            "F2L 2",
+            "F2L 3",
+            "F2L 4",
+            "OLL",
+            "PLL",
+        ]
         alg = " ".join(" ".join(s.moves) for s in steps)
         assert apply_moves(cube, " ".join(to_face_turns(alg)[0])) == SOLVED
         assert steps[5].case and steps[5].case.startswith("OLL")
@@ -108,4 +116,6 @@ def test_view_after_y_matches_notation() -> None:
     cube = apply_moves(SOLVED, "R U F D' L2")
     for turns in range(4):
         fixed = " ".join(to_face_turns("y " * turns + "R U")[0])
-        assert view_after_y(apply_moves(cube, fixed), turns) == apply_moves(view_after_y(cube, turns), "R U")
+        assert view_after_y(apply_moves(cube, fixed), turns) == apply_moves(
+            view_after_y(cube, turns), "R U"
+        )

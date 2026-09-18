@@ -59,7 +59,8 @@ class DistanceTable:
             return self._build()
         path = cache_dir / f"{'-'.join(self.pieces)}.npy"
         if path.exists():
-            return np.load(path)
+            cached: np.ndarray = np.load(path)
+            return cached
         table = self._build()
         cache_dir.mkdir(parents=True, exist_ok=True)
         # Write-then-rename so a crash or a concurrent worker never sees a half-written file.
@@ -70,7 +71,9 @@ class DistanceTable:
         return table
 
     def code(self, positions: Sequence[int]) -> int:
-        return sum(ix[p] * w for ix, p, w in zip(self._index, positions, self._weights, strict=True))
+        return sum(
+            ix[p] * w for ix, p, w in zip(self._index, positions, self._weights, strict=True)
+        )
 
     def distance(self, positions: Sequence[int]) -> int:
         return self.raw[self.code(positions)]
@@ -86,7 +89,10 @@ class DistanceTable:
         for piece, index in zip(self.pieces, self._index, strict=True):
             slots = _slot_positions(piece)
             trans.append(
-                [np.array([index[NEXT[m][pos]] for pos in slots], dtype=np.int64) for m in MOVE_NAMES]
+                [
+                    np.array([index[NEXT[m][pos]] for pos in slots], dtype=np.int64)
+                    for m in MOVE_NAMES
+                ]
             )
 
         dist = np.full(_BASE**n, 255, dtype=np.uint8)
