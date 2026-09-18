@@ -30,7 +30,7 @@ class Solver(ABC):
     # cubes). With BATCHING=auto, only vectorized solvers get requests batched.
     vectorized: bool = False
 
-    def warmup(self) -> None:
+    def warmup(self) -> None:  # noqa: B027 - optional hook, no-op by default
         """Load tables/models so the first request doesn't pay the cost."""
 
     @abstractmethod

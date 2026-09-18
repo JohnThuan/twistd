@@ -36,9 +36,7 @@ class RecordingSolver(Solver):
 async def _run(batcher: Batcher, cubes: list[str]) -> list[object]:
     await batcher.start()
     try:
-        return await asyncio.gather(
-            *(batcher.submit(c) for c in cubes), return_exceptions=True
-        )
+        return await asyncio.gather(*(batcher.submit(c) for c in cubes), return_exceptions=True)
     finally:
         await batcher.stop()
 
