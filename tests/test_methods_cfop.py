@@ -86,3 +86,26 @@ def test_full_cfop_solves_the_cube(best: bool) -> None:
         alg = " ".join(" ".join(s.moves) for s in steps)
         assert apply_moves(cube, " ".join(to_face_turns(alg)[0])) == SOLVED
         assert steps[5].case and steps[5].case.startswith("OLL")
+
+
+def test_human_cfop_uses_only_friendly_moves_and_solves() -> None:
+    from twistd.methods.notation import to_face_turns
+
+    for cube in _scrambles(6, seed=5):
+        steps = cfop.solve_human(cube)
+        alg = " ".join(" ".join(s.moves) for s in steps)
+        # The emitted notation, rotations included, must solve the cube as written.
+        assert apply_moves(cube, " ".join(to_face_turns(alg)[0])) == SOLVED
+        for step in steps[1:5]:
+            for move in step.moves:
+                assert move[0] in "URLFy", f"{step.stage} uses {move}"
+
+
+def test_view_after_y_matches_notation() -> None:
+    from twistd.methods.notation import to_face_turns
+    from twistd.methods.pieces import view_after_y
+
+    cube = apply_moves(SOLVED, "R U F D' L2")
+    for turns in range(4):
+        fixed = " ".join(to_face_turns("y " * turns + "R U")[0])
+        assert view_after_y(apply_moves(cube, fixed), turns) == apply_moves(view_after_y(cube, turns), "R U")

@@ -13,7 +13,8 @@ from typing import Final
 
 from twistd.cube import SOLVED, apply_moves
 from twistd.methods.last_layer import Case, apply_case, recognize_oll, recognize_pll
-from twistd.methods.pieces import NEXT, home, locate
+from twistd.methods.notation import identity_frame, rotate_frame, to_face_turns
+from twistd.methods.pieces import NEXT, home, locate, view_after_y
 from twistd.methods.search import ida_star, table_for
 
 CROSS: Final = ("DF", "DR", "DB", "DL")
@@ -224,6 +225,93 @@ def solve(cube: str, *, best: bool = False) -> list[Step]:
     pll = recognize_pll(state)
     state = apply_case(state, pll)
     if state != SOLVED:
+        raise RuntimeError("CFOP finished without solving the cube")
+
+    return [cross, *f2l, _last_layer_step(oll), _last_layer_step(pll)]
+
+
+# --- human-friendly CFOP -----------------------------------------------------
+# Speedcubers solve F2L with U, R, L and F only, turning the whole cube with y to
+# bring a back slot to the front. D and B turns are awkward and almost never used.
+
+HUMAN_FACES: Final = "URLF"
+# A cube rotation takes about as long as a turn, so it's charged like one.
+ROTATION_COST: Final = 1
+_Y_FRAMES: Final = tuple(rotate_frame(identity_frame(), "y", a) for a in range(4))
+
+
+def _human_moves(orientation: int) -> tuple[str, ...]:
+    """Fixed-center moves a user can make with U/R/L/F after `orientation` y turns."""
+    frame = _Y_FRAMES[orientation]
+    return tuple(frame[face] + suffix for face in HUMAN_FACES for suffix in ("", "'", "2"))
+
+
+def _to_user(moves: list[str], orientation: int) -> tuple[str, ...]:
+    """Rename fixed-center moves to what the user calls them after the rotation."""
+    user_name = {real: user for user, real in _Y_FRAMES[orientation].items()}
+    return tuple(user_name[m[0]] + m[1:] for m in moves)
+
+
+def _rotation(current: int, target: int) -> tuple[str, ...]:
+    return {0: (), 1: ("y",), 2: ("y2",), 3: ("y'",)}[(target - current) % 4]
+
+
+def solve_f2l_human(
+    cube: str, cross_moves: tuple[str, ...], order: tuple[str, ...]
+) -> tuple[list[Step], int]:
+    """F2L the way people do it. Returns the steps and the final y orientation."""
+    cross_state = _apply(tuple(locate(cube, p) for p in CROSS), list(cross_moves))
+    pair_state = {s: _apply(tuple(locate(cube, p) for p in SLOTS[s]), list(cross_moves)) for s in SLOTS}
+
+    steps: list[Step] = []
+    solved: tuple[str, ...] = ()
+    orientation = 0
+    for slot in order:
+        state = cross_state + sum((pair_state[s] for s in solved), ()) + pair_state[slot]
+        heuristic = _heuristic_for(solved, slot)
+
+        best: tuple[int, int, list[str]] | None = None  # (cost, orientation, fixed moves)
+        # Try staying put first, so ties keep the current orientation.
+        for candidate in sorted(range(4), key=lambda a: a != orientation):
+            rotation_cost = 0 if candidate == orientation else ROTATION_COST
+            limit = 14 if best is None else best[0] - rotation_cost - 1
+            if limit < 0:
+                continue
+            found = ida_star(state, heuristic, max_depth=limit, moves=_human_moves(candidate))
+            if found is not None:
+                best = (len(found) + rotation_cost, candidate, found)
+        if best is None:  # a pair stuck somewhere only D/B can reach: allow every move
+            found = ida_star(state, heuristic, max_depth=14)
+            if found is None:
+                raise RuntimeError(f"no F2L solution for {slot}")
+            best = (len(found), orientation, found)
+
+        _, target, fixed_moves = best
+        user_moves = _rotation(orientation, target) + _to_user(fixed_moves, target)
+        orientation = target
+
+        cross_state = _apply(cross_state, fixed_moves)
+        pair_state = {s: _apply(p, fixed_moves) for s, p in pair_state.items()}
+        solved = (*solved, slot)
+        steps.append(_pair_step(len(solved), slot, user_moves))
+    return steps, orientation
+
+
+def solve_human(cube: str) -> list[Step]:
+    """CFOP with human-friendly F2L; OLL and PLL are recognized from the user's view."""
+    cross = solve_cross(cube)
+    f2l, orientation = solve_f2l_human(cube, cross.moves, tuple(SLOTS))
+
+    fixed = " ".join(to_face_turns(" ".join(cross.moves + sum((s.moves for s in f2l), ())))[0])
+    state = apply_moves(cube, fixed)
+    if not all(locate(state, p) == home(p) for p in F2L_PIECES):
+        raise RuntimeError("F2L stage left the first two layers unsolved")
+
+    view = view_after_y(state, orientation)
+    oll = recognize_oll(view)
+    view = apply_case(view, oll)
+    pll = recognize_pll(view)
+    if apply_case(view, pll) != SOLVED:
         raise RuntimeError("CFOP finished without solving the cube")
 
     return [cross, *f2l, _last_layer_step(oll), _last_layer_step(pll)]

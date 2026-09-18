@@ -45,11 +45,12 @@ _TOKEN: Final = re.compile(r"^([URFDLBurfdlbMESxyz])(w?)(2|'|2'|)$")
 Frame = dict[str, str]
 
 
-def _identity() -> Frame:
+def identity_frame() -> Frame:
     return {f: f for f in _FACES}
 
 
-def _rotate(frame: Frame, axis: str, turns: int) -> Frame:
+def rotate_frame(frame: Frame, axis: str, turns: int) -> Frame:
+    """The frame after `turns` quarter rotations about x, y or z."""
     for _ in range(turns % 4):
         step = _ROTATION_STEP[axis]
         frame = {user: frame[step[user]] for user in _FACES}
@@ -78,7 +79,7 @@ def to_face_turns(algorithm: str) -> tuple[list[str], Frame]:
     Returns the face turns plus the final frame (identity if the algorithm's
     rotations cancel out, as they do for r ... r' style algorithms).
     """
-    frame = _identity()
+    frame = identity_frame()
     out: list[str] = []
     for raw in algorithm.replace("(", " ").replace(")", " ").split():
         match = _TOKEN.match(raw)
@@ -92,7 +93,7 @@ def to_face_turns(algorithm: str) -> tuple[list[str], Frame]:
             letter = letter.lower()
 
         if letter in "xyz":
-            frame = _rotate(frame, letter, turns)
+            frame = rotate_frame(frame, letter, turns)
         elif letter in _FACES:
             out.append(_face_turn(frame[letter], turns))
         else:
@@ -100,7 +101,7 @@ def to_face_turns(algorithm: str) -> tuple[list[str], Frame]:
             for _ in range(turns):
                 for move in base_moves.split():
                     out.append(_face_turn(frame[move[0]], _turns(move[1:])))
-                frame = _rotate(frame, rotation[0], _turns(rotation[1:]))
+                frame = rotate_frame(frame, rotation[0], _turns(rotation[1:]))
     return _simplify(out), frame
 
 

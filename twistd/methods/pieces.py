@@ -86,3 +86,30 @@ def locate(cube: str, piece: str) -> int:
 def move_positions(positions: tuple[int, ...], move: str) -> tuple[int, ...]:
     nxt = NEXT[move]
     return tuple(nxt[p] for p in positions)
+
+
+def _whole_cube_y() -> tuple[int, ...]:
+    """perm[dest] = src for a y rotation: every sticker turns like U (R comes to F)."""
+    from twistd.cube import _INDEX, _rotate_cw
+
+    axis = _FACE_AXIS["U"]
+    perm = list(range(54))
+    for src, (position, normal) in enumerate(_GEOMETRY):
+        perm[_INDEX[(_rotate_cw(position, axis), _rotate_cw(normal, axis))]] = src
+    return tuple(perm)
+
+
+_Y: Final = _whole_cube_y()
+_FACES: Final = "URFDLB"
+
+
+def view_after_y(cube: str, turns: int) -> str:
+    """The cube as the user sees it after turning it `turns` quarter turns with y.
+
+    Stickers keep their colors; the letters are then renamed so each face is
+    named after its new position, which is how recognition expects a cube.
+    """
+    for _ in range(turns % 4):
+        cube = "".join(cube[src] for src in _Y)
+    rename = {cube[9 * i + 4]: _FACES[i] for i in range(6)}
+    return "".join(rename[c] for c in cube)
