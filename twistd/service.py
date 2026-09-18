@@ -12,6 +12,7 @@ import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from typing import Any
 
 from twistd.batching import Batcher, QueueFullError
 from twistd.config import Settings
@@ -78,9 +79,7 @@ class SolveService:
         self.cache = LRUCache(settings.cache_size)
         self.cache_hits = 0
         self._pending = 0
-        self._executor = ThreadPoolExecutor(
-            max_workers=self.threads, thread_name_prefix="solver"
-        )
+        self._executor = ThreadPoolExecutor(max_workers=self.threads, thread_name_prefix="solver")
         self._batcher: Batcher | None = None
         if self.batching:
             self._batcher = Batcher(
@@ -116,7 +115,7 @@ class SolveService:
             raise OverloadedError("server is at capacity, retry shortly")
 
         if self._batcher is not None:
-            result = await self._solve_batched(cube)
+            result = await self._solve_batched(self._batcher, cube)
         else:
             result = await self._solve_direct(cube)
 
@@ -142,9 +141,7 @@ class SolveService:
                 asyncio.shield(future), self.settings.solve_timeout_s
             )
         except TimeoutError:
-            raise SolveTimeoutError(
-                f"solve exceeded {self.settings.solve_timeout_s:g}s"
-            ) from None
+            raise SolveTimeoutError(f"solve exceeded {self.settings.solve_timeout_s:g}s") from None
         return SolveResult(solution, solve_ms, queue_ms, 1, cached=False)
 
     def _timed_solve(self, cube: str, submitted: float) -> tuple[str, float, float]:
@@ -153,24 +150,19 @@ class SolveService:
         finished = time.perf_counter()
         return solution, (finished - started) * 1000, (started - submitted) * 1000
 
-    def _release(self, future: asyncio.Future[object]) -> None:
+    def _release(self, future: asyncio.Future[Any]) -> None:
         self._pending -= 1
         if not future.cancelled():
             future.exception()  # mark retrieved; the awaiting caller may have timed out
 
-    async def _solve_batched(self, cube: str) -> SolveResult:
-        assert self._batcher is not None
+    async def _solve_batched(self, batcher: Batcher, cube: str) -> SolveResult:
         self._pending += 1
         try:
-            result = await asyncio.wait_for(
-                self._batcher.submit(cube), self.settings.solve_timeout_s
-            )
+            result = await asyncio.wait_for(batcher.submit(cube), self.settings.solve_timeout_s)
         except QueueFullError as exc:
             raise OverloadedError(str(exc)) from None
         except TimeoutError:
-            raise SolveTimeoutError(
-                f"solve exceeded {self.settings.solve_timeout_s:g}s"
-            ) from None
+            raise SolveTimeoutError(f"solve exceeded {self.settings.solve_timeout_s:g}s") from None
         finally:
             self._pending -= 1
         return SolveResult(

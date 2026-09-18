@@ -64,8 +64,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await service.stop()
 
-    docs = {} if cfg.docs_enabled else {"docs_url": None, "redoc_url": None, "openapi_url": None}
-    app = FastAPI(title="twistd", version=__version__, lifespan=lifespan, **docs)
+    app = FastAPI(
+        title="twistd",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/docs" if cfg.docs_enabled else None,
+        redoc_url="/redoc" if cfg.docs_enabled else None,
+        openapi_url="/openapi.json" if cfg.docs_enabled else None,
+    )
     # Order matters: the size limit runs first, and headers wrap every response.
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=cfg.max_body_bytes)
     app.add_middleware(SecurityHeadersMiddleware)
@@ -116,7 +122,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/metrics")
     def metrics(request: Request) -> dict[str, object]:
         service: SolveService = request.app.state.service
-        return request.app.state.metrics.snapshot(
+        stats: Metrics = request.app.state.metrics
+        return stats.snapshot(
             batching=service.batching,
             queue_depth=service.pending,
             extra={

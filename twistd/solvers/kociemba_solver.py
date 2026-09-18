@@ -20,7 +20,7 @@ class KociembaSolver(Solver):
         if cube == SOLVED:
             return ""
         try:
-            return kociemba.solve(cube).strip()
+            return str(kociemba.solve(cube)).strip()
         except ValueError as exc:
             raise UnsolvableCubeError(
                 "cube state is not solvable (twisted corner, flipped edge, or parity error)"

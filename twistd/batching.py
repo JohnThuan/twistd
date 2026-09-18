@@ -128,7 +128,9 @@ class Batcher:
                 if outcome.error is not None:
                     job.future.set_exception(outcome.error)
                     continue
-                assert outcome.solution is not None
+                if outcome.solution is None:
+                    job.future.set_exception(RuntimeError("solver returned no solution"))
+                    continue
                 job.future.set_result(
                     BatchResult(
                         solution=outcome.solution,

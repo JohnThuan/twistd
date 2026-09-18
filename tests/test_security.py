@@ -80,9 +80,7 @@ def test_docs_can_be_disabled() -> None:
         ("SOLVE_TIMEOUT_S", "0"),
     ],
 )
-def test_bad_config_fails_at_startup(
-    monkeypatch: pytest.MonkeyPatch, env: str, value: str
-) -> None:
+def test_bad_config_fails_at_startup(monkeypatch: pytest.MonkeyPatch, env: str, value: str) -> None:
     monkeypatch.setenv(env, value)
     with pytest.raises(ValueError):
         Settings.from_env()
