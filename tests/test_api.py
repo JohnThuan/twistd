@@ -32,7 +32,8 @@ def test_solve_valid_cube(client: TestClient) -> None:
     resp = client.post("/solve", json={"cube": README_CUBE})
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) == {"solution", "move_count", "solver", "solve_ms"}
+    assert set(body) == {"solution", "move_count", "solver", "solve_ms", "method", "steps"}
+    assert body["method"] == "optimal"
     assert body["solver"] == "kociemba"
     assert body["move_count"] == len(body["solution"].split()) > 0
     assert body["solve_ms"] >= 0

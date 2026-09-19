@@ -13,9 +13,10 @@ from fastapi.responses import JSONResponse
 from twistd import __version__
 from twistd.config import Settings
 from twistd.cube import InvalidCubeError, normalize, validate_facelets
+from twistd.methods.notation import move_count
 from twistd.metrics import Metrics
 from twistd.middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
-from twistd.schemas import ErrorResponse, HealthResponse, SolveRequest, SolveResponse
+from twistd.schemas import ErrorResponse, HealthResponse, SolveRequest, SolveResponse, StepOut
 from twistd.service import (
     OverloadedError,
     SolverFaultError,
@@ -128,6 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             queue_depth=service.pending,
             extra={
                 "solver": {"name": service.solver.name, "threads": service.threads},
+                "methods": service.method_counts,
                 "cache": {
                     "size": len(service.cache),
                     "capacity": service.cache.capacity,
@@ -143,10 +145,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         validate_facelets(cube)
 
         service: SolveService = request.app.state.service
-        result = await service.solve(cube)
+        result = await service.solve(cube, body.method)
 
         total_ms = (time.perf_counter() - received) * 1000
-        move_count = len(result.solution.split())
+        steps = [
+            StepOut(
+                stage=s.stage,
+                moves=" ".join(s.moves),
+                move_count=move_count(" ".join(s.moves)),
+                explanation=s.explanation,
+                case=s.case,
+                algorithm=s.algorithm,
+            )
+            for s in result.steps
+        ]
+        total_moves = sum(s.move_count for s in steps)
         request.app.state.metrics.record_solve(
             total_ms=total_ms,
             solve_ms=result.solve_ms,
@@ -154,9 +167,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             batch_size=result.batch_size,
         )
         logger.info(
-            "solve solver=%s moves=%d solve_ms=%.3f queue_ms=%.3f batch=%d cached=%s total_ms=%.3f",
-            service.solver.name,
-            move_count,
+            "solve method=%s moves=%d solve_ms=%.3f queue_ms=%.3f batch=%d cached=%s total_ms=%.3f",
+            result.method,
+            total_moves,
             result.solve_ms,
             result.queue_ms,
             result.batch_size,
@@ -165,9 +178,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return SolveResponse(
             solution=result.solution,
-            move_count=move_count,
-            solver=service.solver.name,
+            move_count=total_moves,
+            solver=service.solver.name if result.method == "optimal" else "twistd",
             solve_ms=round(result.solve_ms, 3),
+            method=result.method,
+            steps=steps,
         )
 
     return app
